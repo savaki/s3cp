@@ -15,7 +15,9 @@
 package main
 
 import (
+	"errors"
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"launchpad.net/goamz/aws"
 	gos3 "launchpad.net/goamz/s3"
@@ -65,20 +67,10 @@ func contentType(filename string) string {
 	}
 }
 
-func handleDownload(filename string) {
-	data, err := bucket().Get(filename)
-	if err != nil {
-		panic(err)
-	}
-
-	basename := path.Base(filename)
-	ioutil.WriteFile(basename, data, 0644)
-}
-
-func uploadFile(filename string, target string) {
+func uploadFile(filename string, target string) error {
 	data, err := ioutil.ReadFile(filename)
 	if err != nil {
-		log.Fatalln(err)
+		return err
 	}
 
 	// convert the name of the targetfile to what we expect
@@ -92,44 +84,56 @@ func uploadFile(filename string, target string) {
 
 	// upload the file
 	log.Printf("uploading %s to s3:%s (%s)\n", filename, key, mimeType)
-	bucket().Put(key, data, mimeType, gos3.Private)
+	return bucket().Put(key, data, mimeType, gos3.Private)
 }
 
-func uploadFiles(sources []string, target string) {
+func uploadFiles(sources []string, target string) error {
 	for _, source := range sources {
 		if strings.HasPrefix(source, "s3:") {
-			log.Fatalf("invalid arguments, %s -- s3: can either be part of the source or part of the targets\n", source)
+			gripe := fmt.Sprintf("invalid arguments, %s -- s3: can either be part of the source or part of the targets\n", source)
+			return errors.New(gripe)
 		}
 
-		uploadFile(source, target)
+		err := uploadFile(source, target)
+		if err != nil {
+			return err
+		}
 	}
+
+	return nil
 }
 
-func downloadFile(source string, target string) {
+func downloadFile(source string, target string) error {
 	key := source[len("s3:"):len(source)]
 	data, err := bucket().Get(key)
 	if err != nil {
-		log.Fatalln(err)
+		return err
 	}
 
 	filename := target
 	if target == "." {
 		filename = path.Base(key)
 	}
-	ioutil.WriteFile(filename, data, 0644)
+	return ioutil.WriteFile(filename, data, 0644)
 }
 
-func downloadFiles(sources []string, target string) {
+func downloadFiles(sources []string, target string) error {
 	for _, source := range sources {
 		if !strings.HasPrefix(source, "s3:") {
-			log.Fatalf("invalid arguments, %s -- s3: can either be part of the source or part of the targets\n", source)
+			gripe := fmt.Sprintf("invalid arguments, %s -- s3: can either be part of the source or part of the targets\n", source)
+			return errors.New(gripe)
 		}
 
-		downloadFile(source, target)
+		err := downloadFile(source, target)
+		if err != nil {
+			return err
+		}
 	}
+
+	return nil
 }
 
-func copyFiles(args []string) {
+func copyFiles(args []string) error {
 	if len(args) < 2 {
 		log.Fatalln("s3cp requires at least 2 arguments; one or more sources and a target")
 	}
@@ -137,14 +141,17 @@ func copyFiles(args []string) {
 	target := args[len(args)-1]
 	sources := args[0 : len(args)-1]
 	if strings.HasPrefix(target, "s3:") {
-		uploadFiles(sources, target)
+		return uploadFiles(sources, target)
 	} else {
-		downloadFiles(sources, target)
+		return downloadFiles(sources, target)
 	}
 }
 
 func main() {
 	flag.Parse()
 
-	copyFiles(flag.Args())
+	err := copyFiles(flag.Args())
+	if err != nil {
+		log.Fatalln(err)
+	}
 }

@@ -33,14 +33,19 @@ end
 desc "clean"
 task :clean do
   system "rm -rf dist"
-  system "rm -f s3"
+  system "rm -f s3cp vagrant"
   system "rm -f *.deb"
 end
 
 desc "create the debian content directory"
 task :contents => :build do 
   system "mkdir -p #{DIST}/usr/local/bin"
-  system "cp s3 #{DIST}/usr/local/bin"
+  if File.exists? "s3cp"
+    system "cp s3cp #{DIST}/usr/local/bin"
+  elsif File.exists? "vagrant"
+    # otherwise we must be running vagrant mode
+    system "cp vagrant #{DIST}/usr/local/bin/s3cp"
+  end
 end
 
 desc "create a debian package"
@@ -50,14 +55,27 @@ task :package => :contents do
     --force \
     --deb-user 0 \
     --deb-group 0 \
-    --url http://github.com/tmtt/s3 \
-    --name s3 \
+    --url http://github.com/savaki/s3cp \
+    --name s3cp \
     --version 1 \
-    --vendor "The Marketing Tool Tool" \
+    --vendor "Matt Ho" \
     -s dir \
     -t deb \
     -C #{DIST} \
     usr
 EOF
 end
+
+namespace :vagrant do
+  desc "vagrant up"
+  task :up do
+    system "vagrant up"
+  end
+
+  desc "vagrant destroy"
+  task :destroy do
+    system "vagrant destroy"
+  end
+end
+
 
